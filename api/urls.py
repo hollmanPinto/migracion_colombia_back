@@ -8,4 +8,5 @@ router.register(r'migracion',views.ProgrammerViewSet)
 
 urlpatterns = [
     path('',include(router.urls)),
+    path('hello_world',views.ejemplo_vista),
 ]
