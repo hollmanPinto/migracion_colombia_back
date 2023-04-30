@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import MigracionColombia
+from api.models.migracion_colombia import MigracionColombia
 
 class MigracionSerializer(serializers.ModelSerializer):
     class Meta:
