@@ -2,7 +2,7 @@ from django.db import models
 
 # Create your models here.
 class MigracionColombia(models.Model):
-    index = models.IntegerField(primary_key=True, null=False, default=0)
+    index = models.IntegerField(null=False, primary_key=True)
     ANIO = models.IntegerField(null=False, default=0)
     MES = models.CharField(max_length=20, null=False, default='')
     NACIONALIDAD = models.CharField(max_length=50, null=False, default='')
@@ -12,3 +12,4 @@ class MigracionColombia(models.Model):
     INDEFINIDO = models.CharField(max_length=10, null=True)
     TOTAL = models.IntegerField(null=True)
     LATITUD_LONGITUD = models.CharField(max_length=100, null=True)
+
