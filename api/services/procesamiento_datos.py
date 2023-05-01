@@ -39,11 +39,18 @@ class ProcesamientoDatos():
       df.to_sql(con=engine, name='MIGRACION_COLOMBIA', if_exists='replace')
       return;
   #obtener datos filtrados por años--------------------------------------------------
-  def datos_anio(self,anio,cantidad,nacionalidad):
+  def datos_anio(self,anio,cantidad,nacionalidad,mes):
       lista_df = []
-      d1 = df.query('ANIO=={}'.format(anio))
-      d1 = d1.query('NACIONALIDAD=="{}"'.format(nacionalidad))
-      d2 = d1.head(cantidad)
+      d1=df.copy()
+      if(len(cantidad)==0):
+         cantidad='1'
+      if(len(anio)!=0):
+        d1 = df.query('ANIO=={}'.format(anio))
+      if(len(nacionalidad)!=0):
+        d1 = d1.query('NACIONALIDAD=="{}"'.format(nacionalidad))
+      if(len(mes)!=0):
+        d1 = d1.query('MES=="{}"'.format(mes))
+      d2 = d1.head(int(cantidad))
       for indice, fila in d2.iterrows():
           lista_df.append(ProcesamientoDatos.df2model(fila))
       serializer = MigracionSerializer(lista_df, many = True)
