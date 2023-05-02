@@ -51,3 +51,34 @@ def vista_anios(request):
         print(json_out)
         return HttpResponse(json_out,content_type="application/json",status=200)
     return HttpResponseNotAllowed(['POST'])
+#obtener personas por años---------------------------------------------------
+@csrf_exempt
+def personas_x_anios(request):
+    procesamientoDatos = ProcesamientoDatos()
+    if request.method == 'POST':
+        json_data = json.loads(request.body)
+        rangoAnios = json_data['rangoAnios']#[{"anio":"2012", "personas":"500"},{{"anio":"2013", "personas":"800"}}]
+        proc = procesamientoDatos.personasXanio(rangoAnios)
+        json_out = json.dumps(proc)
+        return HttpResponse(json_out,content_type="application/json",status=200)
+#obtener top de paises con mayor migracion---------------------------------------
+@csrf_exempt
+def proporcion_hombres_mujeres(request):
+    procesamientoDatos = ProcesamientoDatos()
+    if request.method == 'POST':
+        json_data = json.loads(request.body)
+        rangoAnios = json_data['rangoAnios']
+        proc = procesamientoDatos.proporcionHM(rangoAnios)
+        json_out = json.dumps(proc)
+        return HttpResponse(json_out,content_type="application/json",status=200)
+#obtener ingresos de migrantes por trimestres------------------------------------
+@csrf_exempt
+def ingresos_migrantes_trimestres(request):
+    procesamientoDatos = ProcesamientoDatos()
+    if request.method == 'POST':
+        json_data = json.loads(request.body)
+        rangoAnios = json_data['rangoAnios']
+        proc = procesamientoDatos.migrantesXtrimestres(rangoAnios)
+        json_out = json.dumps(proc)
+        return HttpResponse(json_out,content_type="application/json",status=200)
+
