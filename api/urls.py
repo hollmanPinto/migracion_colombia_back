@@ -6,6 +6,8 @@ from api.views.programmer_view import vista_anios
 from api.views.programmer_view import personas_x_anios
 from api.views.programmer_view import proporcion_hombres_mujeres
 from api.views.programmer_view import ingresos_migrantes_trimestres
+from api.views.programmer_view import top_paises
+from api.views.programmer_view import cantidad_meses_anios
 
 router = routers.DefaultRouter()
 
@@ -18,4 +20,6 @@ urlpatterns = [
     path('personasXanio',personas_x_anios),
     path('proporcionHm',proporcion_hombres_mujeres),
     path('ingresosMigrantesTr',ingresos_migrantes_trimestres),
+    path('topPaises',top_paises),
+    path('cantidadMesesAnios',cantidad_meses_anios)
 ]

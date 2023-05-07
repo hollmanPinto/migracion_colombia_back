@@ -3,6 +3,7 @@ from sqlalchemy import create_engine;
 from django.http import HttpResponse;
 from api.models.migracion_colombia import MigracionColombia
 from api.controllers.migracion_serializer import MigracionSerializer
+from unidecode import unidecode
 
 class ProcesamientoDatos():
   df=0
@@ -31,6 +32,8 @@ class ProcesamientoDatos():
     df.reset_index(inplace=True)
     df = df.applymap(lambda x: x.upper() if isinstance(x, str) else x)
     df.info()
+    #ELIMINAR ACENTOS------------------------------------------------------
+    df['NACIONALIDAD'] = df['NACIONALIDAD'].apply(lambda x: unidecode(x))
     #INSERCION EN BASE DE DATOS DE MYSQL-------------------------------------
     engine = create_engine("mysql+pymysql://{user}:{pw}@localhost/{db}"
                            .format(user="root",
@@ -111,3 +114,125 @@ class ProcesamientoDatos():
     d4Sum = df4Tri['TOTAL'].sum()
     dicc = {'trim1':int(d1Sum),'trim2':int(d2Sum),'trim3':int(d3Sum),'trim4':int(d4Sum)}
     return dicc;
+#GRAFICOS DE BARRAS-----------------------------------------------------------------
+  def topPaises(self):
+    dfGroupPaises = df.groupby('NACIONALIDAD')['TOTAL'].sum().reset_index()
+    dSort = dfGroupPaises.sort_values(by=['TOTAL'], ascending=False)
+    dSort = dSort.head(20)
+    json_string = dSort.to_json(orient='records')
+    return json_string
+#GRAFICOS DE FUNCION------------------------------------------------------------------
+  def cantidadMesesAnios(self):
+    listaObjects=[]
+
+    df2012 = df.loc[df['ANIO']==2012]
+    df_grouped_2012 = df2012.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2012 = dict(zip(df_grouped_2012['MES'], df_grouped_2012['TOTAL']))  # Convert to dictionary with month as key
+    dicc2012['anio'] = 2012
+    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
+    nuevo_obj_2012 = {}
+    for mes in meses:
+      nuevo_obj_2012[mes] = dicc2012[mes]
+    nuevo_obj_2012['anio'] = dicc2012['anio']
+    listaObjects.append(nuevo_obj_2012)
+
+    df2013 = df.loc[df['ANIO']==2013]
+    df_grouped_2013 = df2013.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2013 = dict(zip(df_grouped_2013['MES'], df_grouped_2013['TOTAL']))  # Convert to dictionary with month as key
+    dicc2013['anio'] = 2013
+    nuevo_obj_2013 = {}
+    for mes in meses:
+      nuevo_obj_2013[mes] = dicc2013[mes]
+    nuevo_obj_2013['anio'] = dicc2013['anio']
+    listaObjects.append(nuevo_obj_2013)
+
+    df2014 = df.loc[df['ANIO']==2014]
+    df_grouped_2014 = df2014.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2014 = dict(zip(df_grouped_2014['MES'], df_grouped_2014['TOTAL']))  # Convert to dictionary with month as key
+    dicc2014['anio'] = 2014
+    nuevo_obj_2014 = {}
+    for mes in meses:
+      nuevo_obj_2014[mes] = dicc2014[mes]
+    nuevo_obj_2014['anio'] = dicc2014['anio']
+    listaObjects.append(nuevo_obj_2014)
+
+    df2015 = df.loc[df['ANIO']==2015]
+    df_grouped_2015 = df2015.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2015 = dict(zip(df_grouped_2015['MES'], df_grouped_2015['TOTAL']))  # Convert to dictionary with month as key
+    dicc2015['anio'] = 2015
+    nuevo_obj_2015 = {}
+    for mes in meses:
+      nuevo_obj_2015[mes] = dicc2015[mes]
+    nuevo_obj_2015['anio'] = dicc2015['anio']
+    listaObjects.append(nuevo_obj_2015)
+
+    df2016 = df.loc[df['ANIO']==2016]
+    df_grouped_2016 = df2016.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2016 = dict(zip(df_grouped_2016['MES'], df_grouped_2016['TOTAL']))  # Convert to dictionary with month as key
+    dicc2016['anio'] = 2016
+    nuevo_obj_2016 = {}
+    for mes in meses:
+      nuevo_obj_2016[mes] = dicc2016[mes]
+    nuevo_obj_2016['anio'] = dicc2016['anio']
+    listaObjects.append(nuevo_obj_2016)
+
+    df2017 = df.loc[df['ANIO']==2017]
+    df_grouped_2017 = df2017.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2017 = dict(zip(df_grouped_2017['MES'], df_grouped_2017['TOTAL']))  # Convert to dictionary with month as key
+    dicc2017['anio'] = 2017
+    nuevo_obj_2017 = {}
+    for mes in meses:
+      nuevo_obj_2017[mes] = dicc2017[mes]
+    nuevo_obj_2017['anio'] = dicc2017['anio']
+    listaObjects.append(nuevo_obj_2017)
+
+    df2018 = df.loc[df['ANIO']==2018]
+    df_grouped_2018 = df2018.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2018 = dict(zip(df_grouped_2018['MES'], df_grouped_2018['TOTAL']))  # Convert to dictionary with month as key
+    dicc2018['anio'] = 2018
+    nuevo_obj_2018 = {}
+    for mes in meses:
+      nuevo_obj_2018[mes] = dicc2018[mes]
+    nuevo_obj_2018['anio'] = dicc2018['anio']
+    listaObjects.append(nuevo_obj_2018)
+
+    df2019 = df.loc[df['ANIO']==2019]
+    df_grouped_2019 = df2019.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2019 = dict(zip(df_grouped_2019['MES'], df_grouped_2019['TOTAL']))  # Convert to dictionary with month as key
+    dicc2019['anio'] = 2019
+    nuevo_obj_2019 = {}
+    for mes in meses:
+      nuevo_obj_2019[mes] = dicc2019[mes]
+    nuevo_obj_2019['anio'] = dicc2019['anio']
+    listaObjects.append(nuevo_obj_2019)
+
+    df2020 = df.loc[df['ANIO']==2020]
+    df_grouped_2020 = df2020.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2020 = dict(zip(df_grouped_2020['MES'], df_grouped_2020['TOTAL']))  # Convert to dictionary with month as key
+    dicc2020['anio'] = 2020
+    nuevo_obj_2020 = {}
+    for mes in meses:
+      nuevo_obj_2020[mes] = dicc2020[mes]
+    nuevo_obj_2020['anio'] = dicc2020['anio']
+    listaObjects.append(nuevo_obj_2020)
+
+    df2021 = df.loc[df['ANIO']==2021]
+    df_grouped_2021 = df2021.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2021 = dict(zip(df_grouped_2021['MES'], df_grouped_2021['TOTAL']))  # Convert to dictionary with month as key
+    dicc2021['anio'] = 2021
+    nuevo_obj_2021 = {}
+    for mes in meses:
+      nuevo_obj_2021[mes] = dicc2021[mes]
+    nuevo_obj_2021['anio'] = dicc2021['anio']
+    listaObjects.append(nuevo_obj_2021)
+
+    df2022 = df.loc[df['ANIO']==2022]
+    df_grouped_2022 = df2022.groupby('MES')['TOTAL'].sum().reset_index()
+    dicc2022 = dict(zip(df_grouped_2022['MES'], df_grouped_2022['TOTAL']))  # Convert to dictionary with month as key
+    dicc2022['anio'] = 2022
+    nuevo_obj_2022 = {}
+    for mes in meses:
+      nuevo_obj_2022[mes] = dicc2022[mes]
+    nuevo_obj_2022['anio'] = dicc2022['anio']
+    listaObjects.append(nuevo_obj_2022)
+    return listaObjects

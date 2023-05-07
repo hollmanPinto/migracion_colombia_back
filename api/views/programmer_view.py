@@ -81,4 +81,19 @@ def ingresos_migrantes_trimestres(request):
         proc = procesamientoDatos.migrantesXtrimestres(rangoAnios)
         json_out = json.dumps(proc)
         return HttpResponse(json_out,content_type="application/json",status=200)
-
+#obtener top de paises-----------------------------------------------------------
+@csrf_exempt
+def top_paises(request):
+    procesamientoDatos = ProcesamientoDatos()
+    if request.method == 'GET':
+        proc = procesamientoDatos.topPaises()
+        return HttpResponse(proc,content_type="application/json",status=200)
+#GRAFICAS DE FUNCIONES-----------------------------------------------
+#obtener cantidadXmesesXaños-----------------------------------------
+@csrf_exempt
+def cantidad_meses_anios(request):
+    procesamientoDatos = ProcesamientoDatos()
+    if request.method == 'GET':
+        proc = procesamientoDatos.cantidadMesesAnios()
+        json_out = json.dumps(proc)
+        return HttpResponse(json_out,content_type="application/json",status=200)
