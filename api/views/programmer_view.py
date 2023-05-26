@@ -53,12 +53,12 @@ def vista_anios(request):
     return HttpResponseNotAllowed(['POST'])
 #obtener personas por años---------------------------------------------------
 @csrf_exempt
-def personas_x_anios(request):
+def crimenesXanio(request):
     procesamientoDatos = ProcesamientoDatos()
     if request.method == 'POST':
         json_data = json.loads(request.body)
         rangoAnios = json_data['rangoAnios']#[{"anio":"2012", "personas":"500"},{{"anio":"2013", "personas":"800"}}]
-        proc = procesamientoDatos.personasXanio(rangoAnios)
+        proc = procesamientoDatos.crimenesXanio(rangoAnios)
         json_out = json.dumps(proc)
         return HttpResponse(json_out,content_type="application/json",status=200)
 #obtener top de paises con mayor migracion---------------------------------------
@@ -73,21 +73,24 @@ def proporcion_hombres_mujeres(request):
         return HttpResponse(json_out,content_type="application/json",status=200)
 #obtener ingresos de migrantes por trimestres------------------------------------
 @csrf_exempt
-def ingresos_migrantes_trimestres(request):
+def delistos_x_anio(request):
     procesamientoDatos = ProcesamientoDatos()
     if request.method == 'POST':
         json_data = json.loads(request.body)
         rangoAnios = json_data['rangoAnios']
-        proc = procesamientoDatos.migrantesXtrimestres(rangoAnios)
+        proc = procesamientoDatos.delitosXanio(rangoAnios)
         json_out = json.dumps(proc)
         return HttpResponse(json_out,content_type="application/json",status=200)
 #obtener top de paises-----------------------------------------------------------
 @csrf_exempt
 def top_paises(request):
     procesamientoDatos = ProcesamientoDatos()
-    if request.method == 'GET':
-        proc = procesamientoDatos.topPaises()
-        return HttpResponse(proc,content_type="application/json",status=200)
+    if request.method == 'POST':
+        json_data = json.loads(request.body)
+        top = json_data['top']
+        proc = procesamientoDatos.topPaises(top)
+        json_out = json.dumps(proc)
+        return HttpResponse(json_out,content_type="application/json",status=200)
 #GRAFICAS DE FUNCIONES-----------------------------------------------
 #obtener cantidadXmesesXaños-----------------------------------------
 @csrf_exempt
@@ -97,3 +100,11 @@ def cantidad_meses_anios(request):
         proc = procesamientoDatos.cantidadMesesAnios()
         json_out = json.dumps(proc)
         return HttpResponse(json_out,content_type="application/json",status=200)
+#obtener estadisticas-------------------------------------------------
+@csrf_exempt
+def estadistica(request):
+    procesamientoDatos = ProcesamientoDatos()
+    if request.method == 'GET':
+        proc = procesamientoDatos.estadistica()
+        json_out = json.dumps(proc)
+        return HttpResponse(proc,content_type="application/json",status=200)

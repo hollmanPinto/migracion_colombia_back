@@ -1,9 +1,11 @@
+import json
 import pandas as pd
 from sqlalchemy import create_engine;
 from django.http import HttpResponse;
 from api.models.migracion_colombia import MigracionColombia
 from api.controllers.migracion_serializer import MigracionSerializer
 from unidecode import unidecode
+from datetime import datetime
 
 class ProcesamientoDatos():
   df=0
@@ -11,36 +13,66 @@ class ProcesamientoDatos():
   def cargar_csv(self,ruta):
     #IMPORTACION DEL DATASET-------------------------------------------------
     global df
-    ds = pd.read_csv(ruta)
-    print(ds)
-    df = ds.copy()
-    #CASTEO DE TIPOS EN EL DATASET-------------------------------------------
-    df['Mes'] = df['Mes'].astype('string')
-    df['Nacionalidad'] = df['Nacionalidad'].astype('string')
-    df['Latitud - Longitud'] = df['Latitud - Longitud'].astype('string')
-    df.info()
-    #RENOMBRAR COLUMNAS------------------------------------------------------
-    df.rename(columns={'Año':'ANIO'},inplace=True)
-    df.rename(columns={'Mes':'MES'},inplace=True)
-    df.rename(columns={'Nacionalidad':'NACIONALIDAD'},inplace=True)
-    df.rename(columns={'Codigo Iso 3166':'ISO_3166'},inplace=True)
-    df.rename(columns={'Femenino':'FEMENINO'},inplace=True)
-    df.rename(columns={'Masculino':'MASCULINO'},inplace=True)
-    df.rename(columns={'Indefinido':'INDEFINIDO'},inplace=True)
-    df.rename(columns={'Total':'TOTAL'},inplace=True)
-    df.rename(columns={'Latitud - Longitud':'LATITUD_LONGITUD'},inplace=True)
-    df.reset_index(inplace=True)
-    df = df.applymap(lambda x: x.upper() if isinstance(x, str) else x)
-    df.info()
-    #ELIMINAR ACENTOS------------------------------------------------------
-    df['NACIONALIDAD'] = df['NACIONALIDAD'].apply(lambda x: unidecode(x))
+    ds = pd.read_csv(ruta,dtype=str)
+    ds.info()
+    ds['delito'] = ds['delito'].fillna('ARTÍCULO 229. Violencia Intrafamiliar')
+    ds['DEPARTAMENTO'] = ds['DEPARTAMENTO'].apply(lambda x: unidecode(x))
+    ds['MUNICIPIO'] = ds['MUNICIPIO'].apply(lambda x: unidecode(x))
+    ds['ARMAS MEDIOS'] = ds['ARMAS MEDIOS'].apply(lambda x: unidecode(x))
+    ds['GENERO'] = ds['GENERO'].apply(lambda x: unidecode(x))
+    ds['delito'] = ds['delito'].apply(lambda x: unidecode(x))
+    ds = ds.applymap(lambda x: 'NO REPORTA'  if (x == 'NO APLICA') else (x) )
+    ds = ds.applymap(lambda x: 'NO REPORTA'  if (x == '-') else (x) )
+    ds = ds.applymap(lambda x: 'NO REPORTA'  if (x == 'NO REPORTADO') else (x) )
+    ds = ds.fillna('NO REPORTA')
+
+    condicion1 = ds['CODIGO DANE'] == 'CODIGO DANE'
+    condicion2 = ds['MUNICIPIO'] == 'MUNICIPIO'
+    condicion3 = ds['DEPARTAMENTO'] == 'NO REPORTA'
+    condicion4 = ds['MUNICIPIO'] == 'NO REPORTA'
+
+    ds = ds[~(condicion1 & condicion2)]
+    ds = ds[~(condicion3 & condicion4)]
+
+    filas_a_actualizar = ds['delito'].str.contains('ARTICULO 211.')
+    ds.loc[filas_a_actualizar,'delito'] ='ARTICULO 211. DELITO SEXUAL AGRAVADO'
+
+    filas_a_actualizar = ds['delito'].str.contains('ARTICULO 216.')
+    ds.loc[filas_a_actualizar,'delito']='ARTICULO 216. DELITO RELACIONADO A PROSTITUCION AGRAVADO'
+    #verificar formato fecha-----------------------------------------------------------
+    def verificar_formato_fecha(fecha):
+      try:
+        datetime.strptime(fecha, '%d/%m/%Y')
+        return True
+      except ValueError:
+        return False
+      
+    f_validas = ds['FECHA HECHO'].apply(verificar_formato_fecha)
+    ds[['DIA','MES','ANIO']] = ds.loc[f_validas,'FECHA HECHO'].str.split('/',expand=True)
+    ds['DIA'] = ds['DIA'].astype(int)
+    ds['MES'] = ds['MES'].astype(int)
+    ds['ANIO'] = ds['ANIO'].astype(int)
+
+    #Eliminamos columnas innecesarias
+    ds = ds.fillna('NO REPORTA')
+    ds= ds.drop('CODIGO DANE',axis=1)
+    ds= ds.drop('FECHA HECHO',axis=1)
+    ds= ds.drop('CANTIDAD',axis=1)
+    ds = ds.fillna('NO REPORTA')
+
     #INSERCION EN BASE DE DATOS DE MYSQL-------------------------------------
     engine = create_engine("mysql+pymysql://{user}:{pw}@localhost/{db}"
                            .format(user="root",
                                    pw="admin",
                                    db="especializacion"))
-    df.to_sql(con=engine, name='MIGRACION_COLOMBIA', if_exists='replace')
-    return;
+    ds.to_sql(con=engine, name='schema_policia', if_exists='replace')
+    ds = ds.rename(columns={'ARMAS MEDIOS': 'ARMAS_MEDIOS'})
+    ds = ds.rename(columns={'GRUPO ETARIO': 'GRUPO_ETARIO'})
+    ds = ds.rename(columns={'delito': 'DELITO'})
+
+    df = ds.copy()
+    return
+
   #obtener datos filtrados por años--------------------------------------------------
   def datos_anio(self,anio,cantidad,nacionalidad,mes):
     lista_df = []
@@ -50,9 +82,9 @@ class ProcesamientoDatos():
     if(len(anio)!=0):
       d1 = df.query('ANIO=={}'.format(anio))
     if(len(nacionalidad)!=0):
-      d1 = d1.query('NACIONALIDAD=="{}"'.format(nacionalidad))
+      d1 = d1.query('DEPARTAMENTO=="{}"'.format(nacionalidad))
     if(len(mes)!=0):
-      d1 = d1.query('MES=="{}"'.format(mes))
+      d1 = d1.query('MES=={}'.format(mes))
     d2 = d1.head(int(cantidad))
     for indice, fila in d2.iterrows():
         lista_df.append(ProcesamientoDatos.df2model(fila))
@@ -62,321 +94,131 @@ class ProcesamientoDatos():
   #convertir de df a model-------------------
   def df2model(registro):
     migracion = MigracionColombia()
-    migracion.ANIO = registro['ANIO']
+    migracion.DEPARTAMENTO = registro['DEPARTAMENTO']
+    migracion.MUNICIPIO = registro['MUNICIPIO']
+    migracion.ARMAS_MEDIOS = registro['ARMAS_MEDIOS']
+    migracion.GENERO = registro['GENERO']
+    migracion.GRUPO_ETARIO = registro['GRUPO_ETARIO']
+    migracion.DELITO = registro['DELITO']
+    migracion.DIA = registro['DIA']
     migracion.MES = registro['MES']
-    migracion.NACIONALIDAD = registro['NACIONALIDAD']
-    migracion.ISO_3166 = registro['ISO_3166']
-    migracion.FEMENINO = registro['FEMENINO']
-    migracion.MASCULINO = registro['MASCULINO']
-    migracion.INDEFINIDO = registro['INDEFINIDO']
-    migracion.TOTAL = registro['TOTAL']
-    migracion.LATITUD_LONGITUD = registro['LATITUD_LONGITUD']
-    migracion.index = registro['index']
+    migracion.ANIO = registro['ANIO']
     return migracion
-  #obtener cantidad de personas por anio------------
-  def personasXanio(self,rangoFechas):
-    anios = str(rangoFechas)
-    rangos = anios.split('-',2)
-    primerAnio = int(rangos[0])
-    segundoAnio = int(rangos[1])
-    dfFiltrado = df.loc[df['ANIO'].between(primerAnio, segundoAnio)]
-    df_grouped = dfFiltrado.groupby('ANIO')['TOTAL'].sum()
-    dicc = df_grouped.to_dict()
-    return dicc
-  #proporcion de hombres y mujeres por anios------------
+  
+  #obtener cantidad de crimenes por anio------------
+  def crimenesXanio(self,rangoFechas):
+    #Crímenes reportados por año
+    anios = rangoFechas.split('-',2)
+    anio_inicial= int(anios[0])
+    anio_final = int(anios[1])
+    df_filtrado = df[(df['ANIO'] >= anio_inicial) & (df['ANIO'] <= anio_final)]
+    reportes_por_anio = df_filtrado['ANIO'].value_counts().to_dict()
+    return reportes_por_anio
+  #Víctimas separadas por género por año
   def proporcionHM(self,rangoAnios):
     anios = str(rangoAnios)
     rangos = anios.split('-',2)
-    primerAnio = int(rangos[0])
-    segundoAnio = int(rangos[1])
-    dfFiltrado = df.loc[df['ANIO'].between(primerAnio, segundoAnio)]
-    df_grouped = dfFiltrado.groupby('ANIO')['FEMENINO'].sum().reset_index()
-    df_grouped_masc = dfFiltrado.groupby('ANIO')['MASCULINO'].sum().reset_index()
-    df_concatenado = pd.concat([df_grouped, df_grouped_masc], axis=1)
-    suma_hombres = df_concatenado['MASCULINO'].sum()
-    suma_mujeres = df_concatenado['FEMENINO'].sum()
-    dicc = {'Hombres':int(suma_hombres),'Mujeres':int(suma_mujeres)}
-    return dicc
-  #migrantes por trimestres-------------------------------
-  def migrantesXtrimestres(self,rangoAnios):
+    anio_inicial= int(rangos[0])
+    anio_final = int(rangos[1])
+    df_filtrado = df[(df['ANIO'] >= anio_inicial) & (df['ANIO'] <= anio_final)]
+    proporcion_victimas = df_filtrado.groupby('GENERO').size().to_dict()
+    return proporcion_victimas
+  #Delitos más cometidos por anio
+  def delitosXanio(self, rangoAnios):
     anios = str(rangoAnios)
     rangos = anios.split('-',2)
-    primerAnio = int(rangos[0])
-    segundoAnio = int(rangos[1])
-    dfFiltrado = df.loc[df['ANIO'].between(primerAnio, segundoAnio)]
-    df1Tri = dfFiltrado[(dfFiltrado['MES'] == 'ENERO') | (dfFiltrado['MES'] == 'FEBRERO') | (dfFiltrado['MES'] == 'MARZO')]
-    df2Tri = dfFiltrado[(dfFiltrado['MES'] == 'ABRIL') | (dfFiltrado['MES'] == 'MAYO') | (dfFiltrado['MES'] == 'JUNIO')]
-    df3Tri = dfFiltrado[(dfFiltrado['MES'] == 'JULIO') | (dfFiltrado['MES'] == 'AGOSTO') | (dfFiltrado['MES'] == 'SEPTIEMBRE')]
-    df4Tri = dfFiltrado[(dfFiltrado['MES'] == 'OCTUBRE') | (dfFiltrado['MES'] == 'NOVIEMBRE') | (dfFiltrado['MES'] == 'DICIEMBRE')]
-    d1Sum = df1Tri['TOTAL'].sum()
-    d2Sum = df2Tri['TOTAL'].sum()
-    d3Sum = df3Tri['TOTAL'].sum()
-    d4Sum = df4Tri['TOTAL'].sum()
-    dicc = {'trim1':int(d1Sum),'trim2':int(d2Sum),'trim3':int(d3Sum),'trim4':int(d4Sum)}
-    return dicc;
+    anio_inicial= int(rangos[0])
+    anio_final = int(rangos[1])
+    df_filtrado = df[(df['ANIO'] >= anio_inicial) & (df['ANIO'] <= anio_final)]
+    delitos_mas_cometidos = df_filtrado['DELITO'].apply(lambda x: x.split('. ')[-1]).value_counts().to_dict()
+    return delitos_mas_cometidos
 #GRAFICOS DE BARRAS-----------------------------------------------------------------
-  def topPaises(self):
-    dfGroupPaises = df.groupby('NACIONALIDAD')['TOTAL'].sum().reset_index()
-    dSort = dfGroupPaises.sort_values(by=['TOTAL'], ascending=False)
-    dSort = dSort.head(20)
-    json_string = dSort.to_json(orient='records')
-    return json_string
+  def topPaises(self,top):
+    #Reporte departamentos con más denuncias
+    reportes_por_departamento = df['DEPARTAMENTO'].value_counts()
+    reportes_por_departamento = reportes_por_departamento.head(top)
+    reportes_por_departamento_dicc = reportes_por_departamento.to_dict()
+    return reportes_por_departamento_dicc
+  
 #GRAFICOS DE FUNCION------------------------------------------------------------------
   def cantidadMesesAnios(self):
-    listaObjects=[]
-    #2012----------------------------------------------------
-    df2012 = df.loc[df['ANIO']==2012]
-    df_grouped_2012 = df2012.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2012 = dict(zip(df_grouped_2012['MES'], df_grouped_2012['TOTAL']))  # Convert to dictionary with month as key
-    dicc2012['anio'] = 2012
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2012 = {}
-    for mes in meses:
-      nuevo_obj_2012[mes] = dicc2012[mes]
-    nuevo_obj_2012['anio'] = dicc2012['anio']
-    nuevo_obj_2012['media'] = round(float(df_grouped_2012['TOTAL'].mean()),2)
-    nuevo_obj_2012['moda'] = float(df_grouped_2012['TOTAL'].max())
+    #delitos por año mes total
+    nombres_meses = {
+        1: 'enero',
+        2: 'febrero',
+        3: 'marzo',
+        4: 'abril',
+        5: 'mayo',
+        6: 'junio',
+        7: 'julio',
+        8: 'agosto',
+        9: 'septiembre',
+        10: 'octubre',
+        11: 'noviembre',
+        12: 'diciembre'
+    }
+    df_result = df.groupby(['ANIO', 'MES']).size().reset_index(name='total_delitos')   
 
-    keys = list(dicc2012.keys())
-    indice = df_grouped_2012['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2012['modaMes'] = clave
-    junio = float(dicc2012['JUNIO'])
-    julio = float(dicc2012['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2012['mediana'] = round(mediana,2)
-    nuevo_obj_2012['desviacion'] = round(df_grouped_2012['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2012)
-    #2013------------------------------------------------------------
-    df2013 = df.loc[df['ANIO']==2013]
-    df_grouped_2013 = df2013.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2013 = dict(zip(df_grouped_2013['MES'], df_grouped_2013['TOTAL']))  # Convert to dictionary with month as key
-    dicc2013['anio'] = 2013
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2013 = {}
-    for mes in meses:
-      nuevo_obj_2013[mes] = dicc2013[mes]
-    nuevo_obj_2013['anio'] = dicc2013['anio']
-    nuevo_obj_2013['media'] = round(float(df_grouped_2013['TOTAL'].mean()),2)
-    nuevo_obj_2013['moda'] = float(df_grouped_2013['TOTAL'].max())
 
-    keys = list(dicc2013.keys())
-    indice = df_grouped_2013['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2013['modaMes'] = clave
-    junio = float(dicc2013['JUNIO'])
-    julio = float(dicc2013['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2013['mediana'] = mediana
-    nuevo_obj_2013['desviacion'] = round(df_grouped_2013['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2013)
-    #2014------------------------------------------------------------
-    df2014 = df.loc[df['ANIO']==2014]
-    df_grouped_2014 = df2014.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2014 = dict(zip(df_grouped_2014['MES'], df_grouped_2014['TOTAL']))  # Convert to dictionary with month as key
-    dicc2014['anio'] = 2014
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2014 = {}
-    for mes in meses:
-      nuevo_obj_2014[mes] = dicc2014[mes]
-    nuevo_obj_2014['anio'] = dicc2014['anio']
-    nuevo_obj_2014['media'] = round(float(df_grouped_2014['TOTAL'].mean()),2)
-    nuevo_obj_2014['moda'] = float(df_grouped_2014['TOTAL'].max())
+    df_result = df_result.sort_values(by=['ANIO', 'MES'], ascending=[True, True])
+    df_result['MES'] = df_result['MES'].map(nombres_meses)
+    result_dict = df_result.to_dict(orient='records')
+    print(result_dict)
+    return result_dict
+  #ESTADISTICA DESCRIPTVA------------------------------------
+  def estadistica(self):
+    df_grouped = df.groupby('ANIO')
 
-    keys = list(dicc2014.keys())
-    indice = df_grouped_2014['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2014['modaMes'] = clave
-    junio = float(dicc2014['JUNIO'])
-    julio = float(dicc2014['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2014['mediana'] = mediana
-    nuevo_obj_2014['desviacion'] = round(df_grouped_2014['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2014)
-    #2015------------------------------------------------------------
-    df2015 = df.loc[df['ANIO']==2015]
-    df_grouped_2015 = df2015.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2015 = dict(zip(df_grouped_2015['MES'], df_grouped_2015['TOTAL']))  # Convert to dictionary with month as key
-    dicc2015['anio'] = 2015
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2015 = {}
-    for mes in meses:
-      nuevo_obj_2015[mes] = dicc2015[mes]
-    nuevo_obj_2015['anio'] = dicc2015['anio']
-    nuevo_obj_2015['media'] = round(float(df_grouped_2015['TOTAL'].mean()),2)
-    nuevo_obj_2015['moda'] = float(df_grouped_2015['TOTAL'].max())
+    nombres_meses = {
+        1: 'enero',
+        2: 'febrero',
+        3: 'marzo',
+        4: 'abril',
+        5: 'mayo',
+        6: 'junio',
+        7: 'julio',
+        8: 'agosto',
+        9: 'septiembre',
+        10: 'octubre',
+        11: 'noviembre',
+        12: 'diciembre'
+    }
 
-    keys = list(dicc2015.keys())
-    indice = df_grouped_2015['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2015['modaMes'] = clave
-    junio = float(dicc2015['JUNIO'])
-    julio = float(dicc2015['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2015['mediana'] = mediana
-    nuevo_obj_2015['desviacion'] = round(df_grouped_2015['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2015)
-    #2016------------------------------------------------------------
-    df2016 = df.loc[df['ANIO']==2016]
-    df_grouped_2016 = df2016.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2016 = dict(zip(df_grouped_2016['MES'], df_grouped_2016['TOTAL']))  # Convert to dictionary with month as key
-    dicc2016['anio'] = 2016
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2016 = {}
-    for mes in meses:
-      nuevo_obj_2016[mes] = dicc2016[mes]
-    nuevo_obj_2016['anio'] = dicc2016['anio']
-    nuevo_obj_2016['media'] = round(float(df_grouped_2016['TOTAL'].mean()),2)
-    nuevo_obj_2016['moda'] = float(df_grouped_2016['TOTAL'].max())
+    # Lista para almacenar los objetos por año
+    resultado = []
 
-    keys = list(dicc2016.keys())
-    indice = df_grouped_2016['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2016['modaMes'] = clave
-    junio = float(dicc2016['JUNIO'])
-    julio = float(dicc2016['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2016['mediana'] = mediana
-    nuevo_obj_2016['desviacion'] = round(df_grouped_2016['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2016)
-    #2017------------------------------------------------------------
-    df2017 = df.loc[df['ANIO']==2017]
-    df_grouped_2017 = df2017.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2017 = dict(zip(df_grouped_2017['MES'], df_grouped_2017['TOTAL']))  # Convert to dictionary with month as key
-    dicc2017['anio'] = 2017
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2017 = {}
-    for mes in meses:
-      nuevo_obj_2017[mes] = dicc2017[mes]
-    nuevo_obj_2017['anio'] = dicc2017['anio']
-    nuevo_obj_2017['media'] = round(float(df_grouped_2017['TOTAL'].mean()),2)
-    nuevo_obj_2017['moda'] = float(df_grouped_2017['TOTAL'].max())
+    # Recorrer cada grupo de datos por año
+    for year, group in df_grouped:
+        # Calcular las estadísticas
+        promedio_denuncias_mes = group.groupby('MES').size().mean()
+        max_denuncias_mes = group.groupby('MES').size().max()
+        mes_mas_denuncias = group.groupby('MES').size().idxmax()
+        mediana_denuncias = group.groupby('MES').size().median()
+        desviacion_estandar = group.groupby('MES').size().std()
 
-    keys = list(dicc2017.keys())
-    indice = df_grouped_2017['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2017['modaMes'] = clave
-    junio = float(dicc2017['JUNIO'])
-    julio = float(dicc2017['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2017['mediana'] = mediana
-    nuevo_obj_2017['desviacion'] = round(df_grouped_2017['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2017)
-    #2018------------------------------------------------------------
-    df2018 = df.loc[df['ANIO']==2018]
-    df_grouped_2018 = df2018.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2018 = dict(zip(df_grouped_2018['MES'], df_grouped_2018['TOTAL']))  # Convert to dictionary with month as key
-    dicc2018['anio'] = 2018
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2018 = {}
-    for mes in meses:
-      nuevo_obj_2018[mes] = dicc2018[mes]
-    nuevo_obj_2018['anio'] = dicc2018['anio']
-    nuevo_obj_2018['media'] = round(float(df_grouped_2018['TOTAL'].mean()),2)
-    nuevo_obj_2018['moda'] = float(df_grouped_2018['TOTAL'].max())
+        # Traducir el mes con el nombre correspondiente
+        mes_mas_denuncias_nombre = nombres_meses[mes_mas_denuncias]
 
-    keys = list(dicc2018.keys())
-    indice = df_grouped_2018['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2018['modaMes'] = clave
-    junio = float(dicc2018['JUNIO'])
-    julio = float(dicc2018['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2018['mediana'] = mediana
-    nuevo_obj_2018['desviacion'] = round(df_grouped_2018['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2018)
-    #2019------------------------------------------------------------
-    df2019 = df.loc[df['ANIO']==2019]
-    df_grouped_2019 = df2019.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2019 = dict(zip(df_grouped_2019['MES'], df_grouped_2019['TOTAL']))  # Convert to dictionary with month as key
-    dicc2019['anio'] = 2019
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2019 = {}
-    for mes in meses:
-      nuevo_obj_2019[mes] = dicc2019[mes]
-    nuevo_obj_2019['anio'] = dicc2019['anio']
-    nuevo_obj_2019['media'] = round(float(df_grouped_2019['TOTAL'].mean()),2)
-    nuevo_obj_2019['moda'] = float(df_grouped_2019['TOTAL'].max())
+        promedio_denuncias_mes = float(promedio_denuncias_mes)
+        max_denuncias_mes = float(max_denuncias_mes)
+        mes_mas_denuncias = int(mes_mas_denuncias)
+        mediana_denuncias = float(mediana_denuncias)
+        desviacion_estandar = float(desviacion_estandar)
+        # Crear el objeto con los datos
+        objeto = {
+            'agno': year,
+            'promedio_denuncias_mes': round(promedio_denuncias_mes,2),
+            'cantidad_denuncias_mes_mayor': round(max_denuncias_mes,2),
+            'mes_mas_denuncias': mes_mas_denuncias_nombre,
+            'mediana_denuncias': round(mediana_denuncias,2),
+            'desviacion_estandar': round(desviacion_estandar,2)
+        }
 
-    keys = list(dicc2019.keys())
-    indice = df_grouped_2019['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2019['modaMes'] = clave
-    junio = float(dicc2019['JUNIO'])
-    julio = float(dicc2019['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2019['mediana'] = mediana
-    nuevo_obj_2019['desviacion'] = round(df_grouped_2019['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2019)
-    #2020------------------------------------------------------------
-    df2020 = df.loc[df['ANIO']==2020]
-    df_grouped_2020 = df2020.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2020 = dict(zip(df_grouped_2020['MES'], df_grouped_2020['TOTAL']))  # Convert to dictionary with month as key
-    dicc2020['anio'] = 2020
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2020 = {}
-    for mes in meses:
-      nuevo_obj_2020[mes] = dicc2020[mes]
-    nuevo_obj_2020['anio'] = dicc2020['anio']
-    nuevo_obj_2020['media'] = round(float(df_grouped_2020['TOTAL'].mean()),2)
-    nuevo_obj_2020['moda'] = float(df_grouped_2020['TOTAL'].max())
+        # Agregar el objeto a la lista de resultados
+        resultado.append(objeto)
 
-    keys = list(dicc2020.keys())
-    indice = df_grouped_2020['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2020['modaMes'] = clave
-    junio = float(dicc2020['JUNIO'])
-    julio = float(dicc2020['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2020['mediana'] = mediana
-    nuevo_obj_2020['desviacion'] = round(df_grouped_2020['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2020)
-    #2021------------------------------------------------------------
-    df2021 = df.loc[df['ANIO']==2021]
-    df_grouped_2021 = df2021.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2021 = dict(zip(df_grouped_2021['MES'], df_grouped_2021['TOTAL']))  # Convert to dictionary with month as key
-    dicc2021['anio'] = 2021
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2021 = {}
-    for mes in meses:
-      nuevo_obj_2021[mes] = dicc2021[mes]
-    nuevo_obj_2021['anio'] = dicc2021['anio']
-    nuevo_obj_2021['media'] = round(float(df_grouped_2021['TOTAL'].mean()),2)
-    nuevo_obj_2021['moda'] = float(df_grouped_2021['TOTAL'].max())
-
-    keys = list(dicc2021.keys())
-    indice = df_grouped_2021['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2021['modaMes'] = clave
-    junio = float(dicc2021['JUNIO'])
-    julio = float(dicc2021['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2021['mediana'] = mediana
-    nuevo_obj_2021['desviacion'] = round(df_grouped_2021['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2021)
-    #2022------------------------------------------------------------
-    df2022 = df.loc[df['ANIO']==2022]
-    df_grouped_2022 = df2022.groupby('MES')['TOTAL'].sum().reset_index()
-    dicc2022 = dict(zip(df_grouped_2022['MES'], df_grouped_2022['TOTAL']))  # Convert to dictionary with month as key
-    dicc2022['anio'] = 2022
-    meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE']
-    nuevo_obj_2022 = {}
-    for mes in meses:
-      nuevo_obj_2022[mes] = dicc2022[mes]
-    nuevo_obj_2022['anio'] = dicc2022['anio']
-    nuevo_obj_2022['media'] = round(float(df_grouped_2022['TOTAL'].mean()),2)
-    nuevo_obj_2022['moda'] = float(df_grouped_2022['TOTAL'].max())
-
-    keys = list(dicc2022.keys())
-    indice = df_grouped_2022['TOTAL'].idxmax()
-    clave = keys[indice]
-    nuevo_obj_2022['modaMes'] = clave
-    junio = float(dicc2022['JUNIO'])
-    julio = float(dicc2022['JULIO'])
-    mediana = (junio+julio)/2
-    nuevo_obj_2022['mediana'] = mediana
-    nuevo_obj_2022['desviacion'] = round(df_grouped_2022['TOTAL'].std(),2)
-    listaObjects.append(nuevo_obj_2022)
-    return listaObjects
-
-   
+    resultado_ordenado = sorted(resultado, key=lambda x: x['agno'])
+    cadena_json = json.dumps(resultado_ordenado)
+    lista_objetos = json.loads(cadena_json)
+    #resultado_dict = dict(enumerate(resultado_ordenado, start=1))
+    return cadena_json
